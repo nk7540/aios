@@ -1,0 +1,27 @@
+[tasks.build-all]
+dependencies = [
+  { name = "build-loader", path = "loader" },
+  { name = "build-kernel", path = "kernel" },
+]
+
+[tasks.ovmf]
+condition = { files_not_exist = ["${CARGO_MAKE_WORKING_DIRECTORY}/bios/RELEASEX64_OVMF.fd"] }
+script = '''
+mkdir -p bios
+cd bios
+wget "https://github.com/retrage/edk2-nightly/raw/master/bin/RELEASEX64_OVMF.fd"
+'''
+
+[tasks.run]
+dependencies = ["build-all", "ovmf"]
+script = "qemu-system-x86_64 -bios bios/RELEASEX64_OVMF.fd -drive format=raw,file=fat:rw:mnt"
+
+[tasks.commit]
+script = '''
+git submodule update
+git add .
+git diff HEAD --color=always | less -R
+git commit
+'''
+[tasks.default]
+alias = "run"
