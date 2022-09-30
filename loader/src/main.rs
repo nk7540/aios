@@ -2,9 +2,16 @@
 #![no_main]
 
 use core::panic::PanicInfo;
+use core::fmt::Write;
+
+use uefi::data_types::Handle;
+use uefi::table::{Boot, SystemTable};
+use uefi::Status;
 
 #[no_mangle]
-fn efi_main() {
+pub fn efi_main(image_handle: uefi::Handle, mut system_table: SystemTable<Boot>) -> Status {
+    system_table.stdout().write_str("Hello, World!");
+
     loop {}
 }
 

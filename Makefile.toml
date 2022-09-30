@@ -14,7 +14,7 @@ wget "https://github.com/retrage/edk2-nightly/raw/master/bin/RELEASEX64_OVMF.fd"
 
 [tasks.run]
 dependencies = ["build-all", "ovmf"]
-script = "qemu-system-x86_64 -bios bios/RELEASEX64_OVMF.fd -drive format=raw,file=fat:rw:mnt -monitor stdio"
+script = "qemu-system-x86_64 --bios bios/RELEASEX64_OVMF.fd -drive format=raw,file=fat:rw:mnt -monitor stdio"
 
 [tasks.commit]
 script = '''
