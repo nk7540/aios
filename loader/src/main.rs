@@ -3,15 +3,17 @@
 #![feature(abi_efiapi)]
 
 use core::ops::{Deref,DerefMut};
-use core::fmt::Write;
+use core::ptr::{copy_nonoverlapping, write_bytes};
+
+mod elf;
 
 use uefi::prelude::*;
-use uefi::proto::console::text;
 use uefi::proto::media::file::{Directory, File, FileMode, FileAttribute, FileInfo};
-use uefi::table::boot::MemoryType;
+use uefi::table::boot::{AllocateType,MemoryType};
 
 #[macro_use]
 extern crate alloc;
+use log::{info,debug};
 
 struct MemoryMap {
     map_size: u64,
@@ -21,85 +23,98 @@ struct MemoryMap {
     descriptor_version: u32,
 }
 
-const EFI_PAGE_SIZE: u64 = 0x1000;
-
+//
+// Open the root directory on the same volume as the code is read
+//
 fn open_root_dir(bs: &BootServices, image_handle: Handle) -> Directory {
     use uefi::proto::loaded_image::LoadedImage;
     use uefi::proto::media::fs::SimpleFileSystem;
 
+    // Open the Loaded Image Protocol of the Image Handle (to get its Device Handle)
     let loaded_image = bs
         .open_protocol_exclusive::<LoadedImage>(image_handle).unwrap();
+    // Open the Simple File System Protocol of the Device Handle obtained above
+    // You can get the File Protocol instance using OpenVolume provided by the SFSP.
     let mut file_system = bs
         .open_protocol_exclusive::<SimpleFileSystem>(loaded_image.deref().device()).unwrap();
     file_system.deref_mut().open_volume().unwrap()
 }
 
-type Elf64_Addr = usize;
-type Elf64_Off = u64;
-type Elf64_XWord = u64;
-type Elf64_Word = u32;
-type Elf64_Half = u16;
-
-#[repr(C)]
-struct Elf64_Ehdr {
-    a: [u8; 24],
-    e_entry: Elf64_Addr,
-    e_phoff: Elf64_Off,
-    b: [u8; 14],
-    e_phentsize: Elf64_Half,
-    e_phnum: Elf64_Half,
-}
-
-struct Elf64_Phdr {
-    p_type: Elf64_Word,
-    p_flags: Elf64_Word,
-    p_offset: Elf64_Off,
-    p_vaddr: Elf64_Addr,
-    p_paddr: Elf64_Addr,
-    p_filesz: Elf64_XWord,
-    p_memsz: Elf64_XWord,
-    p_align: Elf64_XWord,
-}
-
-fn load_elf(buf: &mut [u8], stdout: &mut text::Output) {
-    let ehdr_ptr = buf.as_ptr() as *const Elf64_Ehdr;
+//
+// Load ELF-formatted EXEC file
+// 
+fn load_elf(bs: &BootServices, buf: &mut [u8]) {
+    let ehdr_ptr = buf.as_ptr() as *const elf::Elf64_Ehdr;
     let ehdr = unsafe { &*ehdr_ptr };
-    writeln!(stdout, "e_entry: {:#x}", ehdr.e_entry);
+    debug!("e_entry: {:#x}", ehdr.e_entry);
+
+    // Loop for program headers, find LOAD type segments and copy them to proper address
+    // Set 0 in specified memory space that doesn't have corresponding file contents
+    // It becomes an error if the specified memory space is not available
+    let buf_addr = buf.as_ptr() as u64;
+    for i in 0..ehdr.e_phnum {
+        let phdr_addr = buf_addr + ehdr.e_phoff + u64::from(i * ehdr.e_phentsize);
+        let phdr = unsafe { &*(phdr_addr as *const elf::Elf64_Phdr) };
+        debug!("p_type: {}", phdr.p_type);
+
+        if phdr.p_type != 1 { continue };
+        bs.allocate_pages(
+            AllocateType::Address(phdr.p_vaddr),
+            MemoryType::LOADER_DATA,
+            ((phdr.p_memsz + 0xfff) / 0x1000) as usize,
+        ).unwrap();
+        debug!("page allocated for segment {}", i + 1);
+
+        unsafe {
+            copy_nonoverlapping(
+                (buf_addr + phdr.p_offset) as *const u8,
+                phdr.p_vaddr as *mut u8,
+                u64::from(phdr.p_memsz) as usize,
+            );
+            if phdr.p_filesz < phdr.p_memsz {
+                write_bytes(
+                    (phdr.p_vaddr as u64 + phdr.p_filesz) as *mut u8,
+                    0,
+                    (phdr.p_memsz - phdr.p_filesz) as usize
+                );
+            }
+        }
+        debug!("segment {} copied.", i + 1);
+    }
 }
 
 #[entry]
 pub fn efi_main(image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
     uefi_services::init(&mut system_table).unwrap();
     system_table.stdout().reset(false).unwrap();
-    writeln!(system_table.stdout(), "Hello, World!").unwrap();
+    info!("Loader initialized.");
 
-    // let bs = system_table.boot_services().clone();
+    let bs = system_table.boot_services();
 
     let mut buf = [0_u8; 4096 * 4];
-    let (_map_key, desc_itr) = system_table.boot_services()
+    let (_map_key, desc_itr) = bs
         .memory_map(&mut buf)
         .expect("Failed to get memory map");
     desc_itr.for_each(|desc| {
         if desc.ty == MemoryType::CONVENTIONAL {
-            writeln!(system_table.stdout(), "{:#x}: {} pages",
-                desc.phys_start, desc.page_count).unwrap();
+            info!("{:#x}: {} pages", desc.phys_start, desc.page_count);
         }
     });
 
-    let mut root_dir = open_root_dir(system_table.boot_services(), image_handle);
+    let mut root_dir = open_root_dir(bs, image_handle);
     let mut kernel_file = root_dir.open(
         cstr16!("kernel.elf"),
         FileMode::Read,
         FileAttribute::READ_ONLY
     ).expect("Failed to open file");
-    writeln!(system_table.stdout(), "File opened.").unwrap();
+    debug!("File opened.");
 
     let kernel_file_info = kernel_file.get_boxed_info::<FileInfo>().unwrap();
     let mut buf = vec![0; kernel_file_info.as_ref().file_size() as usize];
     kernel_file.into_regular_file().unwrap().read(&mut buf);
-    load_elf(&mut buf, system_table.stdout());
+    load_elf(bs, &mut buf);
 
-    writeln!(system_table.stdout(), "File read.").unwrap();
+    debug!("File read.");
 
     loop {}
 }
