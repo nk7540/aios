@@ -2,11 +2,13 @@
 #![no_main]
 #![feature(abi_efiapi)]
 
+use core::mem::transmute;
 use core::ops::{Deref,DerefMut};
 use core::ptr::{copy_nonoverlapping, write_bytes};
 
 mod elf;
 
+use elf::Elf64_Ehdr;
 use uefi::prelude::*;
 use uefi::proto::media::file::{Directory, File, FileMode, FileAttribute, FileInfo};
 use uefi::table::boot::{AllocateType,MemoryType};
@@ -43,9 +45,11 @@ fn open_root_dir(bs: &BootServices, image_handle: Handle) -> Directory {
 //
 // Load ELF-formatted EXEC file
 // 
-fn load_elf(bs: &BootServices, buf: &mut [u8]) {
-    let ehdr_ptr = buf.as_ptr() as *const elf::Elf64_Ehdr;
-    let ehdr = unsafe { &*ehdr_ptr };
+fn load_elf(bs: &BootServices, buf: &mut [u8]) -> usize {
+    let ehdr = unsafe {
+        let ehdr_ptr = buf.as_ptr() as *const elf::Elf64_Ehdr;
+        &*ehdr_ptr
+    };
     debug!("e_entry: {:#x}", ehdr.e_entry);
 
     // Loop for program headers, find LOAD type segments and copy them to proper address
@@ -81,6 +85,8 @@ fn load_elf(bs: &BootServices, buf: &mut [u8]) {
         }
         debug!("segment {} copied.", i + 1);
     }
+
+    ehdr.e_entry
 }
 
 #[entry]
@@ -91,9 +97,9 @@ pub fn efi_main(image_handle: Handle, mut system_table: SystemTable<Boot>) -> St
 
     let bs = system_table.boot_services();
 
-    let mut buf = [0_u8; 4096 * 4];
+    let mut memmap_buf = [0_u8; 4096 * 4];
     let (_map_key, desc_itr) = bs
-        .memory_map(&mut buf)
+        .memory_map(&mut memmap_buf)
         .expect("Failed to get memory map");
     desc_itr.for_each(|desc| {
         if desc.ty == MemoryType::CONVENTIONAL {
@@ -110,11 +116,16 @@ pub fn efi_main(image_handle: Handle, mut system_table: SystemTable<Boot>) -> St
     debug!("File opened.");
 
     let kernel_file_info = kernel_file.get_boxed_info::<FileInfo>().unwrap();
-    let mut buf = vec![0; kernel_file_info.as_ref().file_size() as usize];
-    kernel_file.into_regular_file().unwrap().read(&mut buf);
-    load_elf(bs, &mut buf);
+    let mut kernel_buf = vec![0; kernel_file_info.as_ref().file_size() as usize];
+    kernel_file.into_regular_file().unwrap().read(&mut kernel_buf);
+    let entry_point_addr = load_elf(bs, &mut kernel_buf);
 
-    debug!("File read.");
+    bs.memory_map(&mut memmap_buf);
+    system_table.exit_boot_services(image_handle, &mut memmap_buf);
+
+    type EntryPoint = extern "sysv64" fn() -> ();
+    let entry_point: EntryPoint = unsafe { transmute(entry_point_addr) };
+    entry_point();
 
     loop {}
 }
