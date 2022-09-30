@@ -7,4 +7,5 @@ edition = "2021"
 
 [dependencies]
 uefi = "0.17.0"
+uefi-services = "0.14.0"
 utf16_literal = "0.2.1"

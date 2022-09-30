@@ -19,6 +19,7 @@ name = "bootx64"
 version = "0.1.0"
 dependencies = [
  "uefi",
+ "uefi-services",
  "utf16_literal",
 ]
 
@@ -96,6 +97,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "uefi-services"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d420aeaf5194ba1432470b4a316f366c16ef436f2884779eb81430d4d5fad27e"
+dependencies = [
+ "cfg-if",
+ "log",
+ "uefi",
 ]
 
 [[package]]
