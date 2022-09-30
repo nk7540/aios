@@ -3,14 +3,6 @@
 version = 3
 
 [[package]]
-name = "BOOTX64"
-version = "0.1.0"
-dependencies = [
- "uefi",
- "utf16_literal",
-]
-
-[[package]]
 name = "bit_field"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -21,6 +13,14 @@ name = "bitflags"
 version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
+
+[[package]]
+name = "bootx64"
+version = "0.1.0"
+dependencies = [
+ "uefi",
+ "utf16_literal",
+]
 
 [[package]]
 name = "cfg-if"
