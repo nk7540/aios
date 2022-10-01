@@ -1,5 +1,5 @@
 use derive_new::new;
-use core::{slice::from_raw_parts_mut};
+use core::{slice::from_raw_parts_mut, ops::Add};
 
 use crate::error::Error;
 
@@ -63,6 +63,19 @@ impl FrameBuffer {
 pub struct Vector2D<T> {
     pub x: T,
     pub y: T,
+}
+impl<T> Add for Vector2D<T>
+where
+    T: Add<Output = T> + Copy + Clone,
+{
+    type Output = Vector2D<T>;
+
+    fn add(self, other: Self) -> Self::Output {
+        Vector2D::<T> {
+            x: self.x + other.x,
+            y: self.y + other.y,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
