@@ -8,8 +8,9 @@ use core::ptr::{copy_nonoverlapping, write_bytes};
 
 mod elf;
 
-use elf::Elf64_Ehdr;
 use uefi::prelude::*;
+use uefi::proto::console::gop::PixelFormat;
+use uefi::proto::{console,media,loaded_image};
 use uefi::proto::media::file::{Directory, File, FileMode, FileAttribute, FileInfo};
 use uefi::table::boot::{AllocateType,MemoryType};
 
@@ -17,6 +18,10 @@ use uefi::table::boot::{AllocateType,MemoryType};
 extern crate alloc;
 use log::{info,debug};
 
+// Loose coupling between loader and kernel
+// Only entry point function type (e.g. args) is shared in the form of "spec"
+// Do not share "actual files" for common definition
+#[repr(C)]
 struct MemoryMap {
     map_size: u64,
     map_buffer: *mut u8,
@@ -25,21 +30,46 @@ struct MemoryMap {
     descriptor_version: u32,
 }
 
+#[repr(C)]
+struct FrameBuffer {
+    buffer: *mut u8,
+    size: usize,
+    resolution: (usize, usize),
+    pixel_format: PixelFormat,
+    stride: usize,
+}
+
 //
 // Open the root directory on the same volume as the code is read
 //
 fn open_root_dir(bs: &BootServices, image_handle: Handle) -> Directory {
-    use uefi::proto::loaded_image::LoadedImage;
-    use uefi::proto::media::fs::SimpleFileSystem;
-
     // Open the Loaded Image Protocol of the Image Handle (to get its Device Handle)
     let loaded_image = bs
-        .open_protocol_exclusive::<LoadedImage>(image_handle).unwrap();
+        .open_protocol_exclusive::<loaded_image::LoadedImage>(image_handle).unwrap();
     // Open the Simple File System Protocol of the Device Handle obtained above
     // You can get the File Protocol instance using OpenVolume provided by the SFSP.
     let mut file_system = bs
-        .open_protocol_exclusive::<SimpleFileSystem>(loaded_image.deref().device()).unwrap();
+        .open_protocol_exclusive::<media::fs::SimpleFileSystem>(loaded_image.deref().device())
+        .unwrap();
     file_system.deref_mut().open_volume().unwrap()
+}
+
+//
+// Get frame buffer
+//
+fn get_frame_buffer(bs: &BootServices) -> FrameBuffer {
+    let gop_handle = bs
+        .get_handle_for_protocol::<console::gop::GraphicsOutput>().unwrap();
+    let mut gop = bs
+        .open_protocol_exclusive::<console::gop::GraphicsOutput>(gop_handle).unwrap();
+    
+    FrameBuffer {
+        buffer: gop.frame_buffer().as_mut_ptr(),
+        size: gop.frame_buffer().size(),
+        resolution: gop.current_mode_info().resolution(),
+        pixel_format: gop.current_mode_info().pixel_format(),
+        stride: gop.current_mode_info().stride(),
+    }
 }
 
 //
@@ -107,6 +137,8 @@ pub fn efi_main(image_handle: Handle, mut system_table: SystemTable<Boot>) -> St
         }
     });
 
+    let frame_buffer = get_frame_buffer(bs);
+
     let mut root_dir = open_root_dir(bs, image_handle);
     let mut kernel_file = root_dir.open(
         cstr16!("kernel.elf"),
@@ -123,9 +155,9 @@ pub fn efi_main(image_handle: Handle, mut system_table: SystemTable<Boot>) -> St
     bs.memory_map(&mut memmap_buf);
     system_table.exit_boot_services(image_handle, &mut memmap_buf);
 
-    type EntryPoint = extern "sysv64" fn() -> ();
+    type EntryPoint = extern "sysv64" fn(&FrameBuffer) -> ();
     let entry_point: EntryPoint = unsafe { transmute(entry_point_addr) };
-    entry_point();
+    entry_point(&frame_buffer);
 
     loop {}
 }
