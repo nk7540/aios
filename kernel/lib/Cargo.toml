@@ -7,4 +7,5 @@ edition = "2021"
 
 [dependencies]
 derive-new = "0.5.9"
+spin = "0.9.4"
 # fontdue = "0.7.2"

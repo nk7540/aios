@@ -1,5 +1,6 @@
 use derive_new::new;
-use core::{slice::from_raw_parts_mut, ops::Add};
+use spin::mutex::SpinMutex;
+use core::{slice::from_raw_parts_mut, ops::Add, mem::MaybeUninit};
 
 use crate::error::Error;
 
@@ -24,9 +25,17 @@ pub enum PixelFormat {
     //         is safe to model this C enum as a Rust enum.
 }
 
-pub fn init(mut fb: FrameBuffer) -> PixelDrawer {
-    fb.init_rect();
-    PixelDrawer::new(fb)
+pub static PIXEL_WRITER: SpinMutex<MaybeUninit<PixelWriter>>
+    = SpinMutex::new(MaybeUninit::uninit());
+
+pub fn init(mut frame_buffer: FrameBuffer) {
+    let mut locked_pixel_writer = PIXEL_WRITER.lock();
+    locked_pixel_writer.write(PixelWriter::new(frame_buffer));
+}
+
+pub fn lock_pixel_writer<F: Fn(PixelWriter)>(f: F) {
+    let mut locked_pixel_writer = PIXEL_WRITER.lock();
+    unsafe { f(locked_pixel_writer.assume_init()) };
 }
 
 #[derive(Eq, PartialEq, Clone, Copy)]
@@ -37,26 +46,24 @@ pub struct FrameBuffer {
     pub resolution: (usize, usize), // (horizontal, vertical) resolution
     pub pixel_format: PixelFormat,  // format of the frame buffer
     pub stride: usize,              // number of pixels per scanline.
-
-    // Extra fields
-    pub rect: Rect,
 }
+unsafe impl Send for FrameBuffer {}
 
 impl FrameBuffer {
     pub fn width(&self)  -> usize { self.resolution.0 }
     pub fn height(&self) -> usize { self.resolution.1 }
-    fn init_rect(&mut self) {
-        self.rect = Rect::new(0, 0, self.width(), self.height());
-    }
-    fn buf_at(&self, pos: Vector2D<isize>) -> Result<&mut [u8], Error> {
-        if self.rect.is_contained(pos) {
-            let off = (pos.y as usize * self.stride + pos.x as usize) * 4;
-            let addr = self.buffer as usize + off;
-            unsafe { Ok(from_raw_parts_mut(addr as *mut u8, 4)) }
-        } else {
-            Err(Error::new())
-        }
-    }
+    // fn init_rect(&mut self) {
+    //     self.rect = Rect::new(0, 0, self.width(), self.height());
+    // }
+    // fn buf_at(&self, pos: Vector2D<isize>) -> Result<&mut [u8], Error> {
+    //     if self.rect.is_contained(pos) {
+    //         let off = (pos.y as usize * self.stride + pos.x as usize) * 4;
+    //         let addr = self.buffer as usize + off;
+    //         unsafe { Ok(from_raw_parts_mut(addr as *mut u8, 4)) }
+    //     } else {
+    //         Err(Error::new())
+    //     }
+    // }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, new)]
@@ -86,12 +93,12 @@ pub struct PixelColor {
 }
 
 #[derive(Copy, Clone)]
-pub struct PixelDrawer {
+pub struct PixelWriter {
     frame_buffer: FrameBuffer,
     draw_pixel_fn: fn(&Self, buf: *mut u8, color: PixelColor) -> (),
 }
 
-impl PixelDrawer {
+impl PixelWriter {
     fn new(frame_buffer: FrameBuffer) -> Self {
         Self {
             frame_buffer,
