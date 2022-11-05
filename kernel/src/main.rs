@@ -17,6 +17,7 @@ extern "C" fn kernel_main(frame_buffer: &FrameBuffer) {
 }
 
 #[panic_handler]
-fn panic(_panic: &core::panic::PanicInfo<'_>) -> ! {
+fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
+    println!("{}", info);
     loop {unsafe {asm!("hlt")}}
 }

@@ -1,6 +1,6 @@
 use derive_new::new;
 
-use super::frame_buffer::Coord;
+use super::common::Coord;
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash, new)]
 pub struct Rect {

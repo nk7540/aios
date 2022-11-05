@@ -3,8 +3,7 @@ use core::fmt;
 
 use spin::{Mutex, Once, MutexGuard};
 
-use super::frame_buffer::Coord;
-use super::{frame_buffer::{PixelWriter, PixelColor, self}, font::{self, Font}};
+use super::{frame_buffer::{PixelWriter, self}, font::{self, Font}, common::{PixelColor, Coord}};
 
 const CONSOLE_BG_COLOR: PixelColor = PixelColor { r: 0, g: 0, b: 0 };
 const CONSOLE_FG_COLOR: PixelColor = PixelColor { r: 255, g: 255, b: 255 };

@@ -1,4 +1,4 @@
-use super::frame_buffer::{PixelWriter, Coord, PixelColor};
+use super::{frame_buffer::{PixelWriter}, common::{Coord, PixelColor}};
 
 pub struct Font<'a> { regular: &'a[u8] }
 impl<'a> Font<'a> {

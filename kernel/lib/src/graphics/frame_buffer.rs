@@ -1,5 +1,7 @@
 use spin::{Mutex, Once, MutexGuard};
 
+use super::common::{PixelColor, Coord};
+
 #[derive(Eq, PartialEq, Clone, Copy)]
 pub enum PixelFormat {
     /// Each pixel is 32-bit long, with 24-bit RGB, and the last byte is reserved.
@@ -32,6 +34,7 @@ pub fn lock_pixel_writer<F: FnMut(MutexGuard<PixelWriter>)>(mut f: F) {
     f(pixel_writer.lock())
 }
 
+// align as repr(C) to accept the exact argument passed by loader
 #[derive(Eq, PartialEq, Clone, Copy)]
 #[repr(C)]
 pub struct FrameBuffer {
@@ -48,15 +51,6 @@ impl FrameBuffer {
     pub fn height(&self) -> usize { self.resolution.1 }
 }
 
-#[derive(Copy, Clone)]
-pub struct Coord<T>(pub T, pub T);
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub struct PixelColor {
-    pub r: u8,
-    pub g: u8,
-    pub b: u8,
-}
 
 #[derive(Copy, Clone)]
 pub struct PixelWriter {
