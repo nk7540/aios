@@ -2,7 +2,7 @@
 #![no_main]
 
 #[macro_use]
-use lib::println;
+extern crate lib;
 
 use lib::graphics::frame_buffer::{FrameBuffer};
 use lib::graphics::{frame_buffer, console};
@@ -12,11 +12,11 @@ use core::arch::asm;
 extern "C" fn kernel_main(frame_buffer: &FrameBuffer) {
     frame_buffer::init(*frame_buffer);
     console::init(frame_buffer.resolution);
-    println!("Hello, World!");
+    println!("Hello, {}!", "AIOS");
     loop {unsafe {asm!("hlt")}}
 }
 
 #[panic_handler]
 fn panic(_panic: &core::panic::PanicInfo<'_>) -> ! {
-    loop {}
+    loop {unsafe {asm!("hlt")}}
 }

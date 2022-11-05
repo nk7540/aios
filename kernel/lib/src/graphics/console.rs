@@ -1,9 +1,10 @@
-use core::mem::MaybeUninit;
+use core::{mem::MaybeUninit, fmt::Write};
 use core::fmt;
 
 use spin::mutex::SpinMutex;
 
-use super::{frame_buffer::{Vector2D, PixelWriter, FrameBuffer, PixelColor, self}, font::{self, Font}};
+use super::frame_buffer::Coord;
+use super::{frame_buffer::{PixelWriter, FrameBuffer, PixelColor, self}, font::{self, Font}};
 
 const CONSOLE_BG_COLOR: PixelColor = PixelColor { r: 0, g: 0, b: 0 };
 const CONSOLE_FG_COLOR: PixelColor = PixelColor { r: 255, g: 255, b: 255 };
@@ -25,17 +26,17 @@ pub struct Console<'a> {
     resolution: (usize, usize),
     rows: usize,
     columns: usize,
-    cursor: Vector2D<usize>,
+    cursor: Coord<isize>,
     font: Font<'a>,
 }
 impl<'a> Console<'a> {
     pub fn new(resolution: (usize, usize), font: Font<'a>) -> Self {
-        let char_size = font.char_size(' ');
+        let char_size = font.char_size();
         Self {
             resolution,
-            rows: resolution.0 / char_size.x as usize,
-            columns: resolution.1 / char_size.y as usize,
-            cursor: Vector2D::new(0, 0),
+            rows: resolution.0 / char_size.0 as usize,
+            columns: resolution.1 / char_size.1 as usize,
+            cursor: Coord(0, 0),
             font
         }
     }
@@ -43,13 +44,17 @@ impl<'a> Console<'a> {
         for y in 0..self.resolution.1 {
             for x in 0..self.resolution.0 {
                 pixel_writer.draw_pixel(
-                    Vector2D::new(x as isize, y as isize), CONSOLE_BG_COLOR);
+                    Coord(x as isize, y as isize), CONSOLE_BG_COLOR);
             }
         }
     }
-    pub fn put_string(&self, pixel_writer: PixelWriter, s: &str) {
-        self.font.draw_str(pixel_writer, Vector2D::new(0, 0),
-            CONSOLE_FG_COLOR, CONSOLE_BG_COLOR, s);
+    pub fn put_string(&mut self, pixel_writer: PixelWriter, s: &str) {
+        for c in s.chars() {
+            self.cursor = Coord(self.cursor.0 + 1, self.cursor.1);
+            let pos = Coord(self.cursor.0 * self.font.char_size().0, self.cursor.1);
+            self.font.draw_char(pixel_writer, pos,
+                CONSOLE_FG_COLOR, CONSOLE_BG_COLOR, c);
+        }
     }
 }
 
@@ -62,12 +67,19 @@ impl fmt::Write for Console<'_> {
     }
 }
 
+pub fn _print(args: fmt::Arguments) {
+    let mut locked_console = CONSOLE.lock();
+    let console = locked_console.as_mut().unwrap();
+    console.write_fmt(args).unwrap();
+}
+
+#[macro_export]
+macro_rules! print {
+    ($($arg:tt)*) => ($crate::graphics::console::_print(format_args!($($arg)*)));
+}
+
 #[macro_export]
 macro_rules! println {
-    ($( $t:tt )*) => {{
-        use core::fmt::Write;
-        let mut locked_console = $crate::graphics::console::CONSOLE.lock();
-        let console = locked_console.as_mut().unwrap();
-        writeln!(console, $( $t )*).unwrap();
-    }};
+    ($fmt:expr) => (print!(concat!($fmt, "\n")));
+    ($fmt:expr, $($arg:tt)*) => (print!(concat!($fmt, "\n"), $($arg)*));
 }

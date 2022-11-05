@@ -1,6 +1,6 @@
 use derive_new::new;
 
-use super::frame_buffer::Vector2D;
+use super::frame_buffer::Coord;
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash, new)]
 pub struct Rect {
@@ -11,10 +11,10 @@ pub struct Rect {
 }
 
 impl Rect {
-    pub fn is_contained(self, pos: Vector2D<isize>) -> bool {
-        self.x <= pos.x
-            && pos.x < self.x + self.w as isize
-            && self.y <= pos.y
-            && pos.y < self.y + self.h as isize
+    pub fn is_contained(self, pos: Coord<isize>) -> bool {
+        self.x <= pos.0
+            && pos.0 < self.x + self.w as isize
+            && self.y <= pos.1
+            && pos.1 < self.y + self.h as isize
     }
 }

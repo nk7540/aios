@@ -1,10 +1,6 @@
 use derive_new::new;
 use spin::mutex::SpinMutex;
-use core::{slice::from_raw_parts_mut, ops::Add, mem::MaybeUninit};
-
-use crate::error::Error;
-
-use super::rect::Rect;
+use core::{slice::from_raw_parts_mut, ops::{Add, AddAssign}, mem::MaybeUninit};
 
 #[derive(Eq, PartialEq, Clone, Copy)]
 pub enum PixelFormat {
@@ -28,13 +24,13 @@ pub enum PixelFormat {
 pub static PIXEL_WRITER: SpinMutex<MaybeUninit<PixelWriter>>
     = SpinMutex::new(MaybeUninit::uninit());
 
-pub fn init(mut frame_buffer: FrameBuffer) {
+pub fn init(frame_buffer: FrameBuffer) {
     let mut locked_pixel_writer = PIXEL_WRITER.lock();
     locked_pixel_writer.write(PixelWriter::new(frame_buffer));
 }
 
-pub fn lock_pixel_writer<F: Fn(PixelWriter)>(f: F) {
-    let mut locked_pixel_writer = PIXEL_WRITER.lock();
+pub fn lock_pixel_writer<F: FnMut(PixelWriter)>(mut f: F) {
+    let locked_pixel_writer = PIXEL_WRITER.lock();
     unsafe { f(locked_pixel_writer.assume_init()) };
 }
 
@@ -52,38 +48,10 @@ unsafe impl Send for FrameBuffer {}
 impl FrameBuffer {
     pub fn width(&self)  -> usize { self.resolution.0 }
     pub fn height(&self) -> usize { self.resolution.1 }
-    // fn init_rect(&mut self) {
-    //     self.rect = Rect::new(0, 0, self.width(), self.height());
-    // }
-    // fn buf_at(&self, pos: Vector2D<isize>) -> Result<&mut [u8], Error> {
-    //     if self.rect.is_contained(pos) {
-    //         let off = (pos.y as usize * self.stride + pos.x as usize) * 4;
-    //         let addr = self.buffer as usize + off;
-    //         unsafe { Ok(from_raw_parts_mut(addr as *mut u8, 4)) }
-    //     } else {
-    //         Err(Error::new())
-    //     }
-    // }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, new)]
-pub struct Vector2D<T> {
-    pub x: T,
-    pub y: T,
-}
-impl<T> Add for Vector2D<T>
-where
-    T: Add<Output = T> + Copy + Clone,
-{
-    type Output = Vector2D<T>;
-
-    fn add(self, other: Self) -> Self::Output {
-        Vector2D::<T> {
-            x: self.x + other.x,
-            y: self.y + other.y,
-        }
-    }
-}
+#[derive(Copy, Clone)]
+pub struct Coord<T>(pub T, pub T);
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct PixelColor {
@@ -123,8 +91,8 @@ impl PixelWriter {
             *buf.add(2) = color.r;
         }
     }
-    pub fn draw_pixel(&self, pos: Vector2D<isize>, color: PixelColor) {
-        let off = (pos.y * self.frame_buffer.stride as isize + pos.x) * 4;
+    pub fn draw_pixel(&self, pos: Coord<isize>, color: PixelColor) {
+        let off = (pos.1 * self.frame_buffer.stride as isize + pos.0) * 4;
         let buf = unsafe { self.frame_buffer.buffer.offset(off) };
         (self.draw_pixel_fn)(self, buf, color);
     }
