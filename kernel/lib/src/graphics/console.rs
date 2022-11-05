@@ -1,25 +1,28 @@
-use core::{mem::MaybeUninit, fmt::Write};
+use core::fmt::Write;
 use core::fmt;
 
-use spin::mutex::SpinMutex;
+use spin::{Mutex, Once, MutexGuard};
 
 use super::frame_buffer::Coord;
-use super::{frame_buffer::{PixelWriter, FrameBuffer, PixelColor, self}, font::{self, Font}};
+use super::{frame_buffer::{PixelWriter, PixelColor, self}, font::{self, Font}};
 
 const CONSOLE_BG_COLOR: PixelColor = PixelColor { r: 0, g: 0, b: 0 };
 const CONSOLE_FG_COLOR: PixelColor = PixelColor { r: 255, g: 255, b: 255 };
 const SHINONOME_FONT: &[u8] = include_bytes!("../../resources/hankaku.bin") as &[u8];
 
-pub static CONSOLE: SpinMutex<Option<Console>> = SpinMutex::new(None);
+pub static CONSOLE: Once<Mutex<Console>> = Once::new();
 
 pub fn init(resolution: (usize, usize)) {
     let font = font::Font::new(SHINONOME_FONT);
 
-    let mut locked_console = CONSOLE.lock();
-    *locked_console = Some(Console::new(resolution, font));
+    CONSOLE.call_once(|| Mutex::new(Console::new(resolution, font)));
     frame_buffer::lock_pixel_writer(|w| {
-        locked_console.as_ref().unwrap().flush(w);  
+        lock_console(|console| console.flush(&w))
     });
+}
+
+pub fn lock_console<F: Fn(MutexGuard<Console>)>(f: F) {
+    f(CONSOLE.get().unwrap().lock())
 }
 
 pub struct Console<'a> {
@@ -40,7 +43,7 @@ impl<'a> Console<'a> {
             font
         }
     }
-    pub fn flush(&self, pixel_writer: PixelWriter) {
+    pub fn flush(&self, pixel_writer: &PixelWriter) {
         for y in 0..self.resolution.1 {
             for x in 0..self.resolution.0 {
                 pixel_writer.draw_pixel(
@@ -48,7 +51,7 @@ impl<'a> Console<'a> {
             }
         }
     }
-    pub fn put_string(&mut self, pixel_writer: PixelWriter, s: &str) {
+    pub fn put_string(&mut self, pixel_writer: &PixelWriter, s: &str) {
         for c in s.chars() {
             self.cursor = Coord(self.cursor.0 + 1, self.cursor.1);
             let pos = Coord(self.cursor.0 * self.font.char_size().0, self.cursor.1);
@@ -61,16 +64,14 @@ impl<'a> Console<'a> {
 impl fmt::Write for Console<'_> {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         frame_buffer::lock_pixel_writer(|writer| {
-            self.put_string(writer, s);
+            self.put_string(&writer, s);
         });
         Ok(())
     }
 }
 
 pub fn _print(args: fmt::Arguments) {
-    let mut locked_console = CONSOLE.lock();
-    let console = locked_console.as_mut().unwrap();
-    console.write_fmt(args).unwrap();
+    lock_console(|mut console| console.write_fmt(args).unwrap())
 }
 
 #[macro_export]

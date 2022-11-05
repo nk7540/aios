@@ -1,3 +1,4 @@
+#![allow(non_camel_case_types)]
 type Elf64_Addr = usize;
 type Elf64_Off = u64;
 type Elf64_XWord = u64;

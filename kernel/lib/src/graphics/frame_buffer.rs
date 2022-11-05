@@ -1,6 +1,4 @@
-use derive_new::new;
-use spin::mutex::SpinMutex;
-use core::{slice::from_raw_parts_mut, ops::{Add, AddAssign}, mem::MaybeUninit};
+use spin::{Mutex, Once, MutexGuard};
 
 #[derive(Eq, PartialEq, Clone, Copy)]
 pub enum PixelFormat {
@@ -21,17 +19,14 @@ pub enum PixelFormat {
     //         is safe to model this C enum as a Rust enum.
 }
 
-pub static PIXEL_WRITER: SpinMutex<MaybeUninit<PixelWriter>>
-    = SpinMutex::new(MaybeUninit::uninit());
+pub static PIXEL_WRITER: Once<Mutex<PixelWriter>> = Once::new();
 
 pub fn init(frame_buffer: FrameBuffer) {
-    let mut locked_pixel_writer = PIXEL_WRITER.lock();
-    locked_pixel_writer.write(PixelWriter::new(frame_buffer));
+    PIXEL_WRITER.call_once(|| Mutex::new(PixelWriter::new(frame_buffer)));
 }
 
-pub fn lock_pixel_writer<F: FnMut(PixelWriter)>(mut f: F) {
-    let locked_pixel_writer = PIXEL_WRITER.lock();
-    unsafe { f(locked_pixel_writer.assume_init()) };
+pub fn lock_pixel_writer<F: FnMut(MutexGuard<PixelWriter>)>(mut f: F) {
+    f(PIXEL_WRITER.get().unwrap().lock())
 }
 
 #[derive(Eq, PartialEq, Clone, Copy)]
