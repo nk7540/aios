@@ -19,6 +19,7 @@ pub enum PixelFormat {
     //         is safe to model this C enum as a Rust enum.
 }
 
+// spin::Once for lazy init, spin::Mutex for interior mutability with Sync on bare metal
 pub static PIXEL_WRITER: Once<Mutex<PixelWriter>> = Once::new();
 
 pub fn init(frame_buffer: FrameBuffer) {

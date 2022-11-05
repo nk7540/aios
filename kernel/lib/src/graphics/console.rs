@@ -10,6 +10,7 @@ const CONSOLE_BG_COLOR: PixelColor = PixelColor { r: 0, g: 0, b: 0 };
 const CONSOLE_FG_COLOR: PixelColor = PixelColor { r: 255, g: 255, b: 255 };
 const SHINONOME_FONT: &[u8] = include_bytes!("../../resources/hankaku.bin") as &[u8];
 
+// spin::Once for lazy init, spin::Mutex for interior mutability with Sync on bare metal
 pub static CONSOLE: Once<Mutex<Console>> = Once::new();
 
 pub fn init(resolution: (usize, usize)) {
