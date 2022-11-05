@@ -22,7 +22,9 @@ pub fn init(resolution: (usize, usize)) {
 }
 
 pub fn lock_console<F: Fn(MutexGuard<Console>)>(f: F) {
-    f(CONSOLE.get().unwrap().lock())
+    let console = CONSOLE.get()
+        .expect("console::lock_console is called before console::init");
+    f(console.lock())
 }
 
 pub struct Console<'a> {

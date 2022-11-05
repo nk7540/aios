@@ -26,7 +26,9 @@ pub fn init(frame_buffer: FrameBuffer) {
 }
 
 pub fn lock_pixel_writer<F: FnMut(MutexGuard<PixelWriter>)>(mut f: F) {
-    f(PIXEL_WRITER.get().unwrap().lock())
+    let pixel_writer = PIXEL_WRITER.get()
+        .expect("frame_buffer::lock_pixel_writer is called before frame_buffer::init");
+    f(pixel_writer.lock())
 }
 
 #[derive(Eq, PartialEq, Clone, Copy)]
