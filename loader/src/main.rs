@@ -23,11 +23,8 @@ use log::{info,debug};
 // Do not share "actual files" for common definition
 #[repr(C)]
 struct MemoryMap {
-    map_size: u64,
-    map_buffer: *mut u8,
-    map_key: u64,
-    descriptor_size: u64,
-    descriptor_version: u32,
+    mmap_buf: *const u8,
+    descriptor_count: u64,
 }
 
 #[repr(C)]
@@ -128,14 +125,16 @@ pub fn efi_main(image_handle: Handle, mut system_table: SystemTable<Boot>) -> St
     let bs = system_table.boot_services();
 
     let mut memmap_buf = [0_u8; 4096 * 4];
-    let (_map_key, desc_itr) = bs
-        .memory_map(&mut memmap_buf)
-        .expect("Failed to get memory map");
-    desc_itr.for_each(|desc| {
-        if desc.ty == MemoryType::CONVENTIONAL {
-            info!("{:#x}: {} pages", desc.phys_start, desc.page_count);
-        }
-    });
+    {
+        let (_map_key, desc_itr) = bs
+            .memory_map(&mut memmap_buf)
+            .expect("Failed to get memory map");
+        desc_itr.for_each(|desc| {
+            if desc.ty == MemoryType::CONVENTIONAL {
+                info!("{:#x}: {} pages", desc.phys_start, desc.page_count);
+            }
+        });
+    }
 
     let frame_buffer = get_frame_buffer(bs);
 
@@ -152,12 +151,18 @@ pub fn efi_main(image_handle: Handle, mut system_table: SystemTable<Boot>) -> St
     kernel_file.into_regular_file().unwrap().read(&mut kernel_buf);
     let entry_point_addr = load_elf(bs, &mut kernel_buf);
 
-    bs.memory_map(&mut memmap_buf);
-    system_table.exit_boot_services(image_handle, &mut memmap_buf);
+    let descriptor_count: u64;
+    {
+        bs.memory_map(&mut memmap_buf);
+        let (_, desc_itr) = system_table.exit_boot_services(image_handle, &mut memmap_buf)
+            .expect("Failed to exit boot services");
+        descriptor_count = desc_itr.count() as u64;
+    }
+    let memmap = MemoryMap { mmap_buf: memmap_buf.as_ptr(), descriptor_count };
 
-    type EntryPoint = extern "sysv64" fn(&FrameBuffer) -> ();
+    type EntryPoint = extern "sysv64" fn(&FrameBuffer, &MemoryMap) -> ();
     let entry_point: EntryPoint = unsafe { transmute(entry_point_addr) };
-    entry_point(&frame_buffer);
+    entry_point(&frame_buffer, &memmap);
 
     loop {}
 }

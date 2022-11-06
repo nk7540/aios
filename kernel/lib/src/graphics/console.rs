@@ -1,9 +1,10 @@
-use core::fmt::Write;
+use core::{fmt::Write, str::from_utf8};
 use core::fmt;
 
 use spin::{Mutex, Once, MutexGuard};
 
-use super::{frame_buffer::{PixelWriter, self}, font::{self, Font}, common::{PixelColor, Coord}};
+use super::common::XY;
+use super::{frame_buffer::{PixelWriter, self}, font::{self, Font}, common::PixelColor};
 
 const CONSOLE_BG_COLOR: PixelColor = PixelColor { r: 0, g: 0, b: 0 };
 const CONSOLE_FG_COLOR: PixelColor = PixelColor { r: 255, g: 255, b: 255 };
@@ -27,38 +28,56 @@ pub fn lock_console<F: Fn(MutexGuard<Console>)>(f: F) {
     f(console.lock())
 }
 
+const ROWS: usize = 25;
+const COLUMNS: usize = 80;
 pub struct Console<'a> {
     resolution: (usize, usize),
-    rows: usize,
-    columns: usize,
-    cursor: Coord<isize>,
+    cursor: XY<usize>,
+    buf: [[u8; COLUMNS]; ROWS],
     font: Font<'a>,
 }
 impl<'a> Console<'a> {
     pub fn new(resolution: (usize, usize), font: Font<'a>) -> Self {
-        let char_size = font.char_size();
         Self {
             resolution,
-            rows: resolution.0 / char_size.0 as usize,
-            columns: resolution.1 / char_size.1 as usize,
-            cursor: Coord(0, 0),
+            cursor: XY::new(0, 0),
+            buf: [[0; COLUMNS]; ROWS],
             font
         }
     }
     pub fn flush(&self, pixel_writer: &PixelWriter) {
         for y in 0..self.resolution.1 {
             for x in 0..self.resolution.0 {
-                pixel_writer.draw_pixel(
-                    Coord(x as isize, y as isize), CONSOLE_BG_COLOR);
+                pixel_writer.draw_pixel(XY::new(x, y), CONSOLE_BG_COLOR);
             }
         }
     }
     pub fn put_string(&mut self, pixel_writer: &PixelWriter, s: &str) {
         for c in s.chars() {
-            self.cursor = Coord(self.cursor.0 + 1, self.cursor.1);
-            let pos = Coord(self.cursor.0 * self.font.char_size().0, self.cursor.1);
-            self.font.draw_char(pixel_writer, pos,
-                CONSOLE_FG_COLOR, CONSOLE_BG_COLOR, c);
+            if c == '\n' {
+                self.newline(pixel_writer);
+            } else if self.cursor.x < COLUMNS - 1 {
+                let pos = XY::new(self.cursor.x * self.font.char_size().x,
+                    self.cursor.y * self.font.char_size().y);
+                self.font.draw_char(pixel_writer, pos,
+                    CONSOLE_FG_COLOR, CONSOLE_BG_COLOR, c);
+                self.buf[self.cursor.y][self.cursor.x] = c as u8;
+                self.cursor.x += 1;
+            }
+        }
+    }
+    fn newline(&mut self, pixel_writer: &PixelWriter) {
+        self.cursor.x = 0;
+        if self.cursor.y < ROWS - 1 {
+            self.cursor.y += 1;
+        } else {
+            self.flush(pixel_writer);
+            for row in 0..ROWS {
+                self.buf[row] = self.buf[row+1];
+                let buf = self.buf.clone(); // to borrow self as mut in next line
+                self.put_string(pixel_writer, from_utf8(&buf[row]).unwrap());
+            }
+            self.buf[ROWS-1] = [0; COLUMNS];
         }
     }
 }
@@ -72,6 +91,7 @@ impl fmt::Write for Console<'_> {
     }
 }
 
+#[doc(hidden)]
 pub fn _print(args: fmt::Arguments) {
     lock_console(|mut console| console.write_fmt(args).unwrap())
 }

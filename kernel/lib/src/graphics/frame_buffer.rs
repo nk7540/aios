@@ -1,6 +1,6 @@
 use spin::{Mutex, Once, MutexGuard};
 
-use super::common::{PixelColor, Coord};
+use super::common::{PixelColor, XY};
 
 #[derive(Eq, PartialEq, Clone, Copy)]
 pub enum PixelFormat {
@@ -83,9 +83,9 @@ impl PixelWriter {
             *buf.add(2) = color.r;
         }
     }
-    pub fn draw_pixel(&self, pos: Coord<isize>, color: PixelColor) {
-        let off = (pos.1 * self.frame_buffer.stride as isize + pos.0) * 4;
-        let buf = unsafe { self.frame_buffer.buffer.offset(off) };
+    pub fn draw_pixel(&self, pos: XY<usize>, color: PixelColor) {
+        let off = (pos.y * self.frame_buffer.stride + pos.x) * 4;
+        let buf = unsafe { self.frame_buffer.buffer.offset(off as isize) };
         (self.draw_pixel_fn)(self, buf, color);
     }
     pub fn width(&self)  -> usize { self.frame_buffer.width() }
