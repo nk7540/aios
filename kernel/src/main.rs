@@ -1,30 +1,22 @@
 #![no_std]
 #![no_main]
 
-#[macro_use]
-extern crate lib;
+mod graphics;
+mod memory;
+use bootloader::{entry_point, BootInfo, boot_info::Optional};
+use memory::memmap::{MemoryMap, MemoryType};
+use core::{arch::asm, mem};
 
-use lib::graphics::frame_buffer::{FrameBuffer};
-use lib::graphics::{frame_buffer, console};
-use lib::memory::memmap::{MemoryMap, MemoryType};
-use core::arch::asm;
+use crate::graphics::{frame_buffer, console};
 
-#[no_mangle]
-extern "C" fn kernel_main(frame_buf: &FrameBuffer, mmap: &MemoryMap) {
-    frame_buffer::init(*frame_buf);
-    console::init(frame_buf.resolution);
+entry_point!(kernel_main);
+
+fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
+    let frame_buffer = mem::replace(&mut boot_info.framebuffer, Optional::None)
+        .into_option().unwrap();
+    frame_buffer::init(frame_buffer);
+    console::init();
     println!("Hello, {}!", "AIOS");
-    for d in mmap.descriptors() {
-        if d.ty == MemoryType::CONVENTIONAL {
-            println!(
-                "addr={:#10x}-{:#10x}, pages = {:#10x}, kind = {:?}",
-                d.phys_start,
-                d.phys_start + 4096 * d.page_count - 1,
-                d.page_count,
-                d.ty,
-            )
-        }
-    }
     loop {unsafe {asm!("hlt")}}
 }
 

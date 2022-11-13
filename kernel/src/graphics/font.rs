@@ -6,7 +6,7 @@ impl<'a> Font<'a> {
     pub fn char_size(&self) -> XY<usize> {
         XY::new(8 + 2, 16 + 2) // monospaced
     }
-    pub fn draw_char(&self, pixel_writer: &PixelWriter, pos: XY<usize>,
+    pub fn draw_char(&self, pixel_writer: &mut PixelWriter, pos: XY<usize>,
         fg: PixelColor, bg: PixelColor, c: char)
     {
         let mut c = c as usize;
