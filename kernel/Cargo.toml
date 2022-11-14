@@ -13,3 +13,7 @@ bootloader = "0.10.13"
 derive-new = "0.5.9"
 log = "0.4.17"
 spin = "0.9.4"
+x86_64 = "0.14.10"
+
+[package.metadata.bootloader]
+map-physical-memory = true
