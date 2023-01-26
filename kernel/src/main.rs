@@ -2,6 +2,11 @@
 #![no_main]
 #![feature(type_alias_impl_trait)]
 
+// subset of the standard library that additionally contains the allocation and collection types
+// the alloc crate ships with the Rust compiler as part of the standard library, so the compiler already knows about the crate.
+// By adding this extern crate statement, we specify that the compiler should try to include it.
+// extern crate alloc;
+
 mod graphics;
 mod memory;
 use bootloader::{entry_point, BootInfo, boot_info::Optional};

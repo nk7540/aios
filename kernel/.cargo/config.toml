@@ -10,6 +10,8 @@ runner = "cargo run --package boot --"
 # unstable-options = true
 
 [alias]
+# Since we are compiling for a custom target, we can’t use the precompiled version of alloc that is shipped with the Rust installation.
+# Instead, we have to tell cargo to recompile the crate from source.
 kbuild = "build --target x86_64-unknown-none.json -Zbuild-std=core,compiler_builtins,alloc -Zbuild-std-features=compiler-builtins-mem"
 kimage = "run --target x86_64-unknown-none.json -Zbuild-std=core,compiler_builtins,alloc -Zbuild-std-features=compiler-builtins-mem -- --no-run"
 krun = "run --target x86_64-unknown-none.json -Zbuild-std=core,compiler_builtins,alloc -Zbuild-std-features=compiler-builtins-mem"
